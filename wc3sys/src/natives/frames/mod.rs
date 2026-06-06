@@ -11,3 +11,7 @@ pub mod ops;
 pub mod frame_type;
 
 pub use types::*;
+
+pub fn init() -> crate::error::Result<()> {
+    hooks::install()
+}

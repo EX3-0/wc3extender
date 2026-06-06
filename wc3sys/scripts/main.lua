@@ -42,6 +42,23 @@ local function create_icon_button(parent, x, y, texture, callback)
     return button, icon
 end
 
+local function first_selected_unit(player)
+    local group = CreateGroup()
+    if not group or group == 0 then
+        return nil
+    end
+
+    GroupEnumUnitsSelected(group, player, 0)
+    local unit = FirstOfGroup(group)
+    DestroyGroup(group)
+
+    if unit and unit ~= 0 then
+        return unit
+    end
+
+    return nil
+end
+
 function main()
     local player = Player(0)
     local gameUI = BlzGetGameUI()
@@ -52,19 +69,57 @@ function main()
 
     BlzLoadTOCFile("UI\\FrameDef\\FrameDef.toc")
 
-    local isOpen = false
-    local menuFrames = {}
-
-    -- Track spawn order so the 2nd unit can be slowed by the 1st.
+    local consoleOpen = false
+    local visualOpen = false
+    local consoleFrames = {}
+    local visualFrames = {}
     local spawnedUnits = {}
+    local lastSpawnedUnit = nil
 
-    local function show_menu(show)
-        isOpen = show
+    local function show_console(show)
+        consoleOpen = show
 
-        for _, frame in ipairs(menuFrames) do
+        for _, frame in ipairs(consoleFrames) do
             if frame and frame ~= 0 then
                 BlzFrameShow(frame, show and 1 or 0)
             end
+        end
+    end
+
+    local function show_visual_menu(show)
+        visualOpen = show
+
+        for _, frame in ipairs(visualFrames) do
+            if frame and frame ~= 0 then
+                BlzFrameShow(frame, show and 1 or 0)
+            end
+        end
+    end
+
+    local function get_effect_target()
+        local unit = first_selected_unit(player)
+        if unit and unit ~= 0 then
+            return unit
+        end
+
+        if lastSpawnedUnit and lastSpawnedUnit ~= 0 then
+            return lastSpawnedUnit
+        end
+
+        return nil
+    end
+
+    local function apply_visual_buff(rawcode, name, flaga,flagb)
+        local unit = get_effect_target()
+        if not unit or unit == 0 then
+            print("No selected/spawned unit to apply " .. name)
+            return
+        end
+
+        if ApplyBuff(unit, rawcode, 10.00) then
+            print("Applied visual buff: " .. name)
+        else
+            print("Failed to apply visual buff: " .. name)
         end
     end
 
@@ -77,29 +132,17 @@ function main()
 
         SetHeroLevel(unit, 10, false)
         table.insert(spawnedUnits, unit)
+        lastSpawnedUnit = unit
 
-        local index = #spawnedUnits
-
-        if index == 1 then
-            -- First unit: root itself for 2s.
-            CeRootsUnit(unit, 2.0, unit)
-            print("Spawned " .. name .. " (#1) and rooted by self for 2s")
-        elseif index == 2 then
-            -- Second unit: root self for 2s, slowed for 10s by the previous unit.
-            local previous = spawnedUnits[1]
-            CeRootsUnit(unit, 2.0, unit)
-            CeSlowUnit(unit, 10.0, -0.60, -0.25, previous)
-            print("Spawned " .. name .. " (#2): self-root 2s, slowed 10s by previous unit")
-        else
-            print("Spawned " .. name .. " (#" .. index .. ") with no effects")
-        end
+        print("Spawned " .. name .. " (#" .. #spawnedUnits .. ")")
     end
 
+    -- Console/unit-spawn menu.
     local menuBackdrop = BlzCreateFrame("EscMenuBackdrop", gameUI, 0, 0)
     local title = BlzCreateFrame("EscMenuMainPanelDialogTextTemplate", gameUI, 0, 0)
 
-    table.insert(menuFrames, menuBackdrop)
-    table.insert(menuFrames, title)
+    table.insert(consoleFrames, menuBackdrop)
+    table.insert(consoleFrames, title)
 
     BlzFrameClearAllPoints(menuBackdrop)
     BlzFrameSetSize(menuBackdrop, 0.360, 0.210)
@@ -121,7 +164,7 @@ function main()
         },
         {
             id = "Ekee",
-            name = "Keeper of the Grove",
+            name = "Keeper",
             x = 0.400,
             texture = "ReplaceableTextures\\CommandButtons\\BTNKeeperOfTheGrove.blp",
         },
@@ -140,9 +183,9 @@ function main()
 
         local label = BlzCreateFrame("EscMenuMainPanelDialogTextTemplate", gameUI, 0, 0)
 
-        table.insert(menuFrames, button)
-        table.insert(menuFrames, icon)
-        table.insert(menuFrames, label)
+        table.insert(consoleFrames, button)
+        table.insert(consoleFrames, icon)
+        table.insert(consoleFrames, label)
 
         if label and label ~= 0 then
             BlzFrameClearAllPoints(label)
@@ -153,8 +196,75 @@ function main()
         end
     end
 
-    show_menu(false)
+    -- Visual buff picker menu.
+    local visualBackdrop = BlzCreateFrame("EscMenuBackdrop", gameUI, 0, 0)
+    local visualTitle = BlzCreateFrame("EscMenuMainPanelDialogTextTemplate", gameUI, 0, 0)
 
+    table.insert(visualFrames, visualBackdrop)
+    table.insert(visualFrames, visualTitle)
+
+    BlzFrameClearAllPoints(visualBackdrop)
+    BlzFrameSetSize(visualBackdrop, 0.360, 0.190)
+    BlzFrameSetAbsPoint(visualBackdrop, 4, 0.400, 0.330)
+    BlzFrameSetTexture(visualBackdrop, "UI\\Widgets\\EscMenu\\Human\\blank-background.blp", 0, 1)
+
+    BlzFrameClearAllPoints(visualTitle)
+    BlzFrameSetSize(visualTitle, 0.280, 0.035)
+    BlzFrameSetAbsPoint(visualTitle, 4, 0.400, 0.390)
+    BlzTextFrameSetText(visualTitle, "Visual Buffs")
+    BlzFrameSetTextColor(visualTitle, 0xFFFFFFFF)
+
+    local visualBuffs = {
+        {
+            name = "Slow",
+            rawcode = fourcc("Bslo"),
+            x = 0.305,
+            texture = "ReplaceableTextures\\CommandButtons\\BTNSlow.blp",
+			flaga=0,
+			flagb=1,
+        },
+        {
+            name = "Divine Shield",
+            rawcode = fourcc("BHds"),
+            x = 0.400,
+            texture = "ReplaceableTextures\\CommandButtons\\BTNDivineIntervention.blp",
+			flaga=1,
+			flagb=1,
+        },
+        {
+            name = "Roots",
+            rawcode = fourcc("BEer"),
+            x = 0.495,
+            texture = "ReplaceableTextures\\CommandButtons\\BTNEntanglingRoots.blp",
+			flaga=1,
+			flagb=0,
+        },
+    }
+
+    for _, spec in ipairs(visualBuffs) do
+        local button, icon = create_icon_button(gameUI, spec.x, 0.320, spec.texture, function()
+            apply_visual_buff(spec.rawcode, spec.name,spec.flaga,spec.flagb)
+        end)
+
+        local label = BlzCreateFrame("EscMenuMainPanelDialogTextTemplate", gameUI, 0, 0)
+
+        table.insert(visualFrames, button)
+        table.insert(visualFrames, icon)
+        table.insert(visualFrames, label)
+
+        if label and label ~= 0 then
+            BlzFrameClearAllPoints(label)
+            BlzFrameSetSize(label, 0.090, 0.030)
+            BlzFrameSetAbsPoint(label, 4, spec.x, 0.265)
+            BlzTextFrameSetText(label, spec.name)
+            BlzFrameSetTextColor(label, 0xFFFFFFFF)
+        end
+    end
+
+    show_console(false)
+    show_visual_menu(false)
+
+    -- Console toggle button.
     local toggleButton = BlzCreateFrame("ScriptDialogButton", gameUI, 0, 0)
     local toggleIcon = BlzCreateFrame("EscMenuBackdrop", toggleButton, 0, 0)
 
@@ -170,9 +280,14 @@ function main()
     BlzFrameShow(toggleIcon, 1)
 
     register_frame_click(toggleButton, function()
-        show_menu(not isOpen)
+        local nextState = not consoleOpen
+        if nextState then
+            show_visual_menu(false)
+        end
 
-        if isOpen then
+        show_console(nextState)
+
+        if consoleOpen then
             BlzFrameSetTexture(toggleIcon, "ReplaceableTextures\\CommandButtons\\BTNCancel.blp", 0, 1)
             print("Cheat console opened")
         else
@@ -181,5 +296,38 @@ function main()
         end
     end)
 
-    print("Cheat console test ready")
+    -- Visual buff picker toggle button.
+    local visualToggleButton = BlzCreateFrame("ScriptDialogButton", gameUI, 0, 0)
+    local visualToggleIcon = BlzCreateFrame("EscMenuBackdrop", visualToggleButton, 0, 0)
+
+    BlzFrameClearAllPoints(visualToggleButton)
+    BlzFrameSetSize(visualToggleButton, 0.045, 0.045)
+    BlzFrameSetAbsPoint(visualToggleButton, 0, 0.085, 0.570)
+    BlzFrameShow(visualToggleButton, 1)
+
+    BlzFrameClearAllPoints(visualToggleIcon)
+    BlzFrameSetSize(visualToggleIcon, 0.050, 0.050)
+    BlzFrameSetAbsPoint(visualToggleIcon, 0, 0.080, 0.5725)
+    BlzFrameSetTexture(visualToggleIcon, "ReplaceableTextures\\CommandButtons\\BTNSelectHeroOn.blp", 0, 1)
+    BlzFrameShow(visualToggleIcon, 1)
+
+    register_frame_click(visualToggleButton, function()
+        local nextState = not visualOpen
+        if nextState then
+            show_console(false)
+            BlzFrameSetTexture(toggleIcon, "ReplaceableTextures\\CommandButtons\\BTNCallToArms.blp", 0, 1)
+        end
+
+        show_visual_menu(nextState)
+
+        if visualOpen then
+            BlzFrameSetTexture(visualToggleIcon, "ReplaceableTextures\\CommandButtons\\BTNCancel.blp", 0, 1)
+            print("Visual buff picker opened")
+        else
+            BlzFrameSetTexture(visualToggleIcon, "ReplaceableTextures\\CommandButtons\\BTNSelectHeroOn.blp", 0, 1)
+            print("Visual buff picker closed")
+        end
+    end)
+
+    print("Cheat console and visual buff picker ready")
 end
