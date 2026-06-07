@@ -104,6 +104,32 @@ fn register_native_for_all(name: &str, signature: &str, func: *const c_void) {
     }
 }
 
+fn map_payload_for(engine: &Arc<dyn Engine>) -> Option<Vec<u8>> {
+    let sig = engine.map_signature()?;
+    let marker = crate::archives::read_file(sig.marker_path)?;
+    logging::info(&format!(
+        "engines: map signature matched for {} at {}",
+        engine.name(),
+        sig.marker_path
+    ));
+
+    if sig.payload_path == sig.marker_path {
+        return Some(marker);
+    }
+
+    match crate::archives::read_file(sig.payload_path) {
+        Some(payload) => Some(payload),
+        None => {
+            logging::warn(&format!(
+                "engines: map payload missing for {} at {}",
+                engine.name(),
+                sig.payload_path
+            ));
+            None
+        }
+    }
+}
+
 fn config_all() {
     MAIN_CALLED.store(false, Ordering::Relaxed);
     clear_callbacks();
@@ -112,6 +138,8 @@ fn config_all() {
     let native_snapshot = natives::snapshot();
 
     for engine in snapshot() {
+        let payload = map_payload_for(&engine);
+        engine.set_map_payload(payload);
         engine.config();
         for rec in &native_snapshot {
             engine.register_native(&rec.name, &rec.signature, rec.func as *const c_void);

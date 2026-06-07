@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use mlua::Function;
 
-use super::{CallbackContext, Engine, EngineContext};
+use super::{CallbackContext, Engine, EngineContext, EngineMapSignature};
 use crate::logging;
 
 use runtime::LuaRuntime;
@@ -34,6 +34,24 @@ impl Engine for LuaEngine {
     fn install(&self, context: EngineContext) -> crate::error::Result<()> {
         self.runtime.install(context)?;
         Ok(())
+    }
+
+    fn map_signature(&self) -> Option<EngineMapSignature> {
+        Some(EngineMapSignature {
+            marker_path: "war3map.lua",
+            payload_path: "war3map.lua",
+        })
+    }
+
+    fn set_map_payload(&self, payload: Option<Vec<u8>>) {
+        let source = payload.and_then(|bytes| match String::from_utf8(bytes) {
+            Ok(source) => Some(source),
+            Err(e) => {
+                logging::warn(&format!("[lua] map payload is not utf-8: {e}"));
+                None
+            }
+        });
+        self.runtime.set_map_script(source);
     }
 
     fn config(&self) {

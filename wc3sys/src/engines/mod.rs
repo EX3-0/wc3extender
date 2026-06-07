@@ -23,6 +23,12 @@ pub enum CallbackContext {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct EngineMapSignature {
+    pub marker_path: &'static str,
+    pub payload_path: &'static str,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct EngineContext {
     manager: manager::ManagerHandle,
     engine_name: &'static str,
@@ -44,6 +50,12 @@ pub trait Engine: Send + Sync {
     fn install(&self, _context: EngineContext) -> crate::error::Result<()> {
         Ok(())
     }
+
+    fn map_signature(&self) -> Option<EngineMapSignature> {
+        None
+    }
+
+    fn set_map_payload(&self, _payload: Option<Vec<u8>>) {}
 
     fn config(&self);
     fn function_called(&self, name: &str);

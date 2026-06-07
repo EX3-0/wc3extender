@@ -11,6 +11,7 @@ pub struct LuaRuntime {
     lua: Mutex<Option<Lua>>,
     callbacks: LuaCallbacks,
     context: Mutex<Option<EngineContext>>,
+    map_script: Mutex<Option<String>>,
 }
 
 impl LuaRuntime {
@@ -19,6 +20,7 @@ impl LuaRuntime {
             lua: Mutex::new(None),
             callbacks: LuaCallbacks::new(),
             context: Mutex::new(None),
+            map_script: Mutex::new(None),
         })
     }
 
@@ -31,6 +33,10 @@ impl LuaRuntime {
         Ok(())
     }
 
+    pub fn set_map_script(&self, source: Option<String>) {
+        *self.map_script.lock().unwrap() = source;
+    }
+
     pub fn rebuild(self: &Arc<Self>) -> Result<(), String> {
         self.callbacks.clear();
         *self.lua.lock().unwrap() = None;
@@ -40,7 +46,9 @@ impl LuaRuntime {
         lua.load(r#"print("LuaEngine ready")"#)
             .exec()
             .map_err(|e| e.to_string())?;
-        lua.load(dev_script::MAIN)
+        let map_script = self.map_script.lock().unwrap().clone();
+        let source = map_script.as_deref().unwrap_or(dev_script::MAIN);
+        lua.load(source)
             .exec()
             .map_err(|e| e.to_string())?;
 
